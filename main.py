@@ -145,10 +145,10 @@ async def trigger_langsmith_agent(
         # Format the event for the agent
         formatted_message = format_linear_event(event_type, event_data)
         
-        # Prepare input for the agent
+        # Prepare input for the agent (using correct message format)
         agent_input = {
             "messages": [{
-                "role": "user",
+                "type": "human",
                 "content": formatted_message
             }],
             "metadata": {
