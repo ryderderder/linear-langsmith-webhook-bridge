@@ -2,10 +2,25 @@
 
 Production-ready webhook receiver that triggers LangSmith agents when Linear events occur.
 
+## 📖 Documentation
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Detailed explanation of how Linear webhooks work with LangSmith agents
+- **[Examples](examples/)** - Code examples showing different SDK usage patterns
+
+## What This Does
+
+This bridge connects Linear's webhook system to LangSmith agents:
+
+```
+Linear Event → Linear Webhook → This Bridge → LangSmith Agent → Response
+```
+
+**Important**: LangSmith Agent Builder doesn't have webhook endpoints. This bridge receives webhooks from Linear and programmatically calls your LangSmith agent via SDK. See [ARCHITECTURE.md](ARCHITECTURE.md) for full details.
+
 ## Features
 
 ✅ **Secure Webhook Verification**
-- Linear signature verification using HMAC-SHA256
+- Linear signature verification using HMAC-SHA256 (per Linear API spec)
 - Optional secret token authentication
 - Rate limiting to prevent abuse
 
@@ -49,6 +64,7 @@ LANGSMITH_API_KEY=lsv2_pt_xxxxxxxxxxxx
 LANGSMITH_API_URL=https://your-deployment.langsmith.com
 LANGSMITH_AGENT_ID=your-agent-id
 LINEAR_SIGNING_SECRET=lin_whsec_xxxxxxxxxxxx
+WEBHOOK_SECRET_TOKEN=your_random_token_here
 ```
 
 ### 4. Install Dependencies
@@ -131,11 +147,19 @@ The server will start on `http://localhost:8080`
 1. In Linear, go to **Settings** → **API** → **Webhooks**
 2. Click **Create Webhook**
 3. Configure:
-   - **URL**: `https://your-deployment-url.com/webhook/linear?token=YOUR_SECRET_TOKEN`
-   - **Events**: Select events you want (Issues, Comments, Projects, etc.)
-   - **Secret**: Copy the signing secret to your `LINEAR_SIGNING_SECRET` env var
+   - **URL** (the "callback URL"): `https://your-deployment-url.com/webhook/linear?token=YOUR_SECRET_TOKEN`
+     - This is where Linear will send webhook POST requests
+     - Must be publicly accessible HTTPS
+     - Include the secret token as a query parameter
+   - **Label**: Give it a descriptive name (e.g., "LangSmith Integration")
+   - **Resource Types**: Select events you want (Issues, Comments, Projects, etc.)
+   - **Team**: Choose specific team or "All public teams"
 4. Click **Create**
-5. Test with "Send test delivery"
+5. **Copy the Signing Secret** shown on the webhook detail page
+6. Add it to your `.env` as `LINEAR_SIGNING_SECRET`
+7. Test with "Send test delivery" button
+
+**Note**: Linear will retry failed webhooks after 1 minute, 1 hour, and 6 hours. Webhook may be disabled after 3 failures.
 
 ## Configuration Options
 
@@ -143,7 +167,7 @@ The server will start on `http://localhost:8080`
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `LANGSMITH_API_KEY` | Your LangSmith API key | `lsv2_pt_...` |
+| `LANGSMITH_API_KEY` | Your LangSmith API key (Personal Access Token) | `lsv2_pt_...` |
 | `LANGSMITH_API_URL` | Your agent's API URL | `https://xxx.langsmith.com` |
 | `LANGSMITH_AGENT_ID` | Your agent's ID | `agent-xxx` |
 
@@ -151,7 +175,7 @@ The server will start on `http://localhost:8080`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LINEAR_SIGNING_SECRET` | Linear webhook signing secret (recommended) | None |
+| `LINEAR_SIGNING_SECRET` | Linear webhook signing secret (strongly recommended) | None |
 | `LINEAR_EVENT_FILTER` | Comma-separated event types to process | All events |
 | `WEBHOOK_SECRET_TOKEN` | Additional URL token for security | None |
 | `LOG_LEVEL` | Logging verbosity (DEBUG/INFO/WARNING/ERROR) | INFO |
@@ -175,19 +199,21 @@ Supported event types:
 - `Project` - Project changes
 - `Cycle` - Cycle changes
 - `Label` - Label changes
+- See [Linear docs](https://developers.linear.app/docs/graphql/webhooks) for complete list
 
 ## API Endpoints
 
 ### `POST /webhook/linear`
 
-Receives Linear webhook events and triggers your LangSmith agent.
+Receives Linear webhook events (the "callback URL") and triggers your LangSmith agent.
 
 **Query Parameters:**
-- `token` (optional): Secret token for additional authentication
+- `token` (optional but recommended): Secret token for additional authentication
 
 **Headers:**
-- `Linear-Signature`: HMAC signature for verification
+- `Linear-Signature`: HMAC-SHA256 signature for verification (hex-encoded)
 - `Linear-Delivery`: Unique webhook delivery ID
+- `Linear-Event`: Event type (Issue, Comment, etc.)
 
 **Response:**
 ```json
@@ -215,10 +241,13 @@ Health check endpoint for monitoring.
 ## Security Best Practices
 
 1. **Always use HTTPS** - Replit and Railway provide this automatically
-2. **Enable signature verification** - Set `LINEAR_SIGNING_SECRET`
+2. **Enable signature verification** - Set `LINEAR_SIGNING_SECRET` (from Linear webhook page)
 3. **Use secret token** - Add `?token=SECRET` to your webhook URL
-4. **Rate limiting** - Built-in protection (50 req/min per IP)
+4. **Rate limiting** - Built-in protection (50 req/min per IP, 100/hour overall)
 5. **Keep secrets safe** - Never commit `.env` to git
+6. **Monitor webhook logs** - Check both Linear's delivery logs and your bridge logs
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed security implementation.
 
 ## Event Formatting
 
@@ -286,10 +315,11 @@ Set `LOG_LEVEL` to control verbosity:
 
 ### Webhook Not Triggering
 
-1. Check webhook URL is correct and accessible
+1. Check webhook URL is correct and publicly accessible (HTTPS required)
 2. Verify Linear signing secret matches
 3. Check event filters aren't blocking the event
-4. Review logs for error messages
+4. Review Linear webhook delivery logs (on webhook detail page)
+5. Check your bridge logs for errors
 
 ### Agent Not Responding
 
@@ -298,20 +328,22 @@ Set `LOG_LEVEL` to control verbosity:
 3. Check agent ID matches your Agent Builder agent
 4. Ensure API URL includes `https://`
 5. Test the agent directly in Agent Builder
+6. Check message format is correct: `{"type": "human", "content": "..."}`
 
 ### Authentication Errors
 
 1. Regenerate your LangSmith API key
-2. Verify `LINEAR_SIGNING_SECRET` is set correctly
+2. Verify `LINEAR_SIGNING_SECRET` matches exactly (copy from Linear webhook page)
 3. Check `WEBHOOK_SECRET_TOKEN` matches URL parameter
+4. Ensure using raw request body for signature verification
 
 ### Rate Limiting
 
 If you hit rate limits (429 errors):
-- Default: 100 requests per hour
-- Endpoint: 50 requests per minute
+- Bridge limits: 50 req/min per IP, 100/hour overall
+- Linear API: 1,500 requests/hour per user
 - Wait for the limit window to reset
-- Contact Anthropic for higher limits if needed
+- Consider filtering events to reduce volume
 
 ## Development
 
@@ -320,7 +352,7 @@ If you hit rate limits (429 errors):
 1. Install [ngrok](https://ngrok.com/)
 2. Start your local server: `python main.py`
 3. In another terminal: `ngrok http 8080`
-4. Use the ngrok URL for Linear webhook
+4. Use the ngrok HTTPS URL for Linear webhook
 
 ### Testing
 
@@ -337,11 +369,13 @@ curl -X POST http://localhost:8080/webhook/linear?token=YOUR_TOKEN \
   -d '{"type":"Issue","action":"update","data":{"title":"Test Issue"}}'
 ```
 
-## Support
+## Support & Resources
 
-- **LangSmith Docs**: https://docs.langchain.com/langsmith/agent-builder
-- **Linear API Docs**: https://developers.linear.app/docs/graphql/webhooks
-- **Issues**: https://github.com/ryderderder/linear-langsmith-webhook-bridge/issues
+- **[Architecture Documentation](ARCHITECTURE.md)** - Detailed technical explanation
+- **[Code Examples](examples/)** - SDK usage patterns
+- **[LangSmith Docs](https://docs.langchain.com/langsmith/agent-builder)** - Agent Builder documentation
+- **[Linear Webhook Docs](https://developers.linear.app/docs/graphql/webhooks)** - Official webhook documentation
+- **[Issues](https://github.com/ryderderder/linear-langsmith-webhook-bridge/issues)** - Report bugs or request features
 
 ## License
 
