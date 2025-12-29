@@ -57,7 +57,48 @@ LINEAR_SIGNING_SECRET=lin_whsec_xxxxxxxxxxxx
 pip install -r requirements.txt
 ```
 
-### 5. Run Locally (Testing)
+### 5. Test Your LangSmith Connection (Recommended)
+
+Before deploying, verify your credentials work:
+
+```bash
+python test_langsmith_connection.py
+```
+
+This will:
+- ✅ Test basic agent invocation
+- ✅ Test streaming agent responses (as used in production)
+- ✅ Verify all credentials are correct
+
+**Expected output:**
+```
+🧪 Running LangSmith Agent Tests
+==================================================
+📤 Test 1: Simple agent invocation
+✅ Thread created: thread-xyz
+✅ Run created: {...}
+✅ Simple invocation successful!
+
+📤 Test 2: Streaming agent invocation
+✅ Thread created: thread-abc
+📥 Streaming response...
+✅ Received response: Hello! This is...
+✅ Streaming invocation successful!
+
+📊 Test Results
+==================================================
+Simple invocation: ✅ PASS
+Streaming invocation: ✅ PASS
+
+🎉 All tests passed! Your LangSmith connection is working correctly.
+```
+
+If tests fail, check:
+- API key has correct permissions
+- Agent ID matches your agent
+- API URL is correct and includes `https://`
+
+### 6. Run Locally (Testing)
 
 ```bash
 python main.py
@@ -65,7 +106,7 @@ python main.py
 
 The server will start on `http://localhost:8080`
 
-### 6. Deploy to Production
+### 7. Deploy to Production
 
 #### Option A: Deploy to Replit
 
@@ -85,7 +126,7 @@ The server will start on `http://localhost:8080`
 4. Add environment variables in Railway dashboard
 5. Railway will auto-deploy and provide a URL
 
-### 7. Configure Linear Webhook
+### 8. Configure Linear Webhook
 
 1. In Linear, go to **Settings** → **API** → **Webhooks**
 2. Click **Create Webhook**
@@ -252,10 +293,11 @@ Set `LOG_LEVEL` to control verbosity:
 
 ### Agent Not Responding
 
-1. Verify LangSmith credentials are correct
-2. Check agent ID matches your Agent Builder agent
-3. Ensure API URL includes `https://`
-4. Test the agent directly in Agent Builder
+1. **Run the test script first**: `python test_langsmith_connection.py`
+2. Verify LangSmith credentials are correct
+3. Check agent ID matches your Agent Builder agent
+4. Ensure API URL includes `https://`
+5. Test the agent directly in Agent Builder
 
 ### Authentication Errors
 
@@ -283,6 +325,9 @@ If you hit rate limits (429 errors):
 ### Testing
 
 ```bash
+# Test LangSmith connection
+python test_langsmith_connection.py
+
 # Test health endpoint
 curl http://localhost:8080/health
 
